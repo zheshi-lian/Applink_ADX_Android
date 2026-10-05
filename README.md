@@ -23,7 +23,7 @@
 
 ## 集成方式（三选一）
 
-### A. 直接用 AAR（推荐，对标 AppLuck SDK 分发）
+### A. 直接用 AAR（推荐）
 1. 取包：Releases 页下载 `applink-adsdk-release.aar`，或 Actions → Artifacts `applink-adsdk-aar`。
 2. 放入宿主工程 `app/libs/`。
 3. 宿主 `app/build.gradle` 加：

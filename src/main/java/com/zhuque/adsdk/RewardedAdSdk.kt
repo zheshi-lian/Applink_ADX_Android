@@ -3,6 +3,7 @@ package com.zhuque.adsdk
 import android.os.Handler
 import android.os.Looper
 import android.util.Xml
+import org.xmlpull.v1.XmlPullParser
 import android.widget.VideoView
 import org.json.JSONArray
 import org.json.JSONObject
@@ -121,7 +122,7 @@ object RewardedAdSdk {
 
         videoView.setVideoPath(ad.mediaUrl)
         videoView.setOnPreparedListener { mp ->
-            mp.setOnVideoSizeChangedListener { _, _, _, _, _ -> }
+            mp.setOnVideoSizeChangedListener { _, _, _ -> }
             videoView.start()
             track("start")
         }

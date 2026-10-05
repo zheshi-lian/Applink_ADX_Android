@@ -16,14 +16,16 @@ SDK 把「观看证据」POST 到这里，本服务：
 import hashlib
 import hmac
 import json
+import os
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 import urllib.request
 
-API_KEY = "demo_api_key"                 # ★ 与 ssp.py 保持一致
-ADX_BASE = "http://127.0.0.1:8080"       # ADX 的 /s2s/reward 基址
-PORT = 8090
+# 密钥与地址一律从环境变量注入，不再写死在仓库里（与 ssp.py 保持一致）
+API_KEY = os.environ.get("ADX_API_KEY", "demo_api_key")
+ADX_BASE = os.environ.get("ADX_BASE", "http://127.0.0.1:8080").rstrip("/")
+PORT = int(os.environ.get("APP_SERVER_PORT", "8090"))
 
 
 def _sign(impid, cid, token, watched_ms, duration_ms, ts) -> str:
@@ -48,6 +50,12 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self._send({"ok": False, "reason": "BAD_JSON"}, 400)
             return
+
+        # 缺字段早失败：别把残缺证据签名转发出去，白白消耗一次 ADX 往返
+        for k in ("impid", "cid", "token", "watchedMs", "durationMs"):
+            if k not in ev:
+                self._send({"ok": False, "reason": "MISSING_FIELD:" + k}, 400)
+                return
 
         # 1) 本服务端用 api_key 签名（SDK 只给原始证据，不签名）
         ts = int(time.time())

@@ -1,13 +1,16 @@
 name: Build Android AAR
 
 # 自动出包：推送代码或打 v* tag 时，GitHub 云端自动编译出 AAR（无需本地装 Android SDK/Gradle）
-#   · 普通 push → 在 Actions 页面的 "Artifacts" 里下载 applink-adsdk-aar
-#   · 打 tag v1.0.0 并推送 → 自动在 Releases 页生成带 AAR 的发布
+#   · 普通 push -> 在 Actions 页面的 "Artifacts" 里下载 applink-adsdk-aar
+#   · 打 tag v1.0.0 并推送 -> 自动在 Releases 页生成带 AAR 的发布
 on:
   push:
     branches: [ main, master ]
     tags: [ 'v*' ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -23,21 +26,22 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        # 该 action 会自动安装 cmdline-tools 并接受 license，并设置 ANDROID_SDK_ROOT
-
-      - name: Accept Android licenses
-        run: yes | sdkmanager --licenses || true
-
-      - name: Install SDK packages (compileSdk 34)
         run: |
+          ANDROID_SDK_ROOT=$HOME/android-sdk
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmd.zip
+          unzip -q cmd.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
+          mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | sdkmanager --licenses
           sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       - name: Build release AAR (library)
         uses: gradle/gradle-build-action@v3
         with:
           gradle-version: '8.9'
-          arguments: ':adsdk:assembleRelease'
+          arguments: 'assembleRelease'
 
       - name: Build demo app (verify SDK integration)
         continue-on-error: true

@@ -1,7 +1,6 @@
 package com.zhuque.adsdk
 
 import android.content.Context
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Xml
@@ -21,44 +20,39 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 /**
- * AdView —— 极简原生广告 SDK（Android）
+ * AdView —— 极简原生广告 SDK（Android），对标商业闭环产品。
  *
  * 【设计原则】
- *   · 单文件、无外部依赖（仅 Android SDK + Kotlin stdlib）
- *   · 一个 AdView 控件 + 多 format 的 load 方法：loadBanner / loadInterstitial / loadRewarded / loadNative / loadPush
- *   · HTTP 调用：POST /ssp/bid（OpenRTB 2.5+），与平台竞价引擎直连，不经过中间层
- *   · 客户端不可信：SDK 只负责 竞价→解析→渲染→上报；发奖由 App 服务端 S2S 回调平台裁决，SDK 绝不本地判定发奖
+ *   · 单文件、零第三方依赖（仅 Android SDK + Kotlin stdlib），产出 applink-adsdk-release.aar
+ *   · 多形态 load：loadBanner / loadInterstitial / loadRewarded / loadNative / loadPush
+ *   · HTTP 调用：POST /ssp/bid（OpenRTB 2.5），与 SSP 竞价引擎直连
+ *   · 客户端不可信：SDK 只负责 竞价→解析→渲染→tracking 上报→交付观看证据；发奖由 App 服务端 S2S 回调裁决
  *
  * 【安全边界｜客户端不可信】
- *   1. SDK 拿到的是一次性签名令牌（/ssp/bid 返回 ext.rw.token），仅用于上报，无法自证完播。
- *   2. 激励视频发奖：SDK 把「观看证据」(impid/cid/crid/watchedMs/durationMs) 交给 App 服务端；
- *      服务端用 api_key 做 HMAC-SHA256 签名后回调 /s2s/reward，平台校验 签名→令牌未重放→设备指纹→完播比例→才 granted。
- *   3. SDK 本身不持有 rwToken 也不本地发奖，杜绝客户端伪造完播刷量。
+ *   1. SDK 拿到一次性签名令牌（/ssp/bid 返回 ext.rw.token），仅用于上报，无法自证完播。
+ *   2. 激励视频发奖：SDK 把「观看证据」(impid/cid/crid/token/watchedMs/durationMs) 交给 App 服务端；
+ *      服务端用 api_key 做 HMAC-SHA256 签名后回调 /s2s/reward，平台校验 签名→令牌未重放→完播比例→才 granted。
+ *   3. SDK 本身不持有 api_key、也不本地发奖，杜绝客户端伪造完播刷量。
  *
- * 【用法示例】
+ * 【用法】
+ *   AdSdk.init(application, AdSdk.Config(appKey="...", serverUrl="https://ssp.your-adx.com", siteDomain="mygame.example.com"))
  *   val adView = AdView(context)
  *   adView.adUnitId = "首页-banner"
- *   adView.siteDomain = "mygame.example.com"
- *   adView.adxBase = "https://dellai.xyz"
- *   adView.appServerRewardUrl = "https://你的服务端/reward"   // S2S 发奖回调（仅 rewarded 需要）
- *
- *   // Banner / Interstitial（HTML 创意 → WebView）
- *   adView.loadBanner(AdView.Listener { ad -> adView.setBannerHtml(ad.html) },
- *                     { reason -> Log.w("Ad", "banner:$reason") })
- *   // Rewarded（VAST 4.0 → VideoView，完播后 S2S 发奖）
- *   adView.loadRewarded(AdView.Listener { ad -> adView.playRewarded(videoView, ad) { reward -> /* 发奖 */ } },
- *                     { reason -> Log.w("Ad", "rewarded:$reason") })
- *   // Native（结构化 JSON，由 App 自渲染样式）
- *   adView.loadNative(AdView.Listener { ad -> renderMyOwn(ad.nativeJson) },
- *                    { reason -> Log.w("Ad", "native:$reason") })
+ *   adView.loadBanner(
+ *       AdView.Listener { ad -> adView.setBannerHtml(ad.html) },
+ *       AdView.FailListener { err -> Log.w("Ad", "banner: ${err.code} ${err.reason}") }
+ *   )
+ *   // 预加载后秒出：
+ *   adView.preload("banner") { }
+ *   adView.loadFromCache("首页-banner", AdView.Listener { ... }, AdView.FailListener { ... })
  */
 class AdView(context: Context) : FrameLayout(context) {
 
-    // ---------- 配置 ----------
+    // ---------- 配置（留空则自动取 AdSdk 全局配置） ----------
     var adUnitId: String = ""
-    var siteDomain: String = ""
-    var adxBase: String = "https://dellai.xyz"
-    var appServerRewardUrl: String = ""   // App 服务端接口：由它做 S2S 签名回调 /s2s/reward（仅 rewarded 需要）
+    var siteDomain: String = ""           // 留空则用 AdSdk.config.siteDomain
+    var adxBase: String = ""              // 留空则用 AdSdk.serverBase()
+    var appServerRewardUrl: String = ""   // 留空则用 AdSdk.config.appServerRewardUrl
 
     // ---------- 数据模型 ----------
     data class Ad(
@@ -80,15 +74,15 @@ class AdView(context: Context) : FrameLayout(context) {
 
     // ---------- 回调 ----------
     fun interface Listener { fun onAdLoaded(ad: Ad) }
-    fun interface FailListener { fun onFailed(reason: String) }
-    interface RewardListener { fun onRewardGranted(reward: String); fun onRewardDenied(reason: String) }
+    fun interface FailListener { fun onFailed(error: AdError) }
+    interface RewardListener { fun onRewardGranted(reward: String); fun onRewardDenied(error: AdError) }
 
     // ---------- 内部 ----------
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private var currentBannerWebView: WebView? = null
 
-    // ========== ① 竞价请求 ==========
+    // ========== ① 竞价请求（统一走 AdSdk.buildBidRequest） ==========
     fun loadBanner(onAd: Listener, onFail: FailListener) = load("banner", onAd, onFail)
     fun loadInterstitial(onAd: Listener, onFail: FailListener) = load("interstitial", onAd, onFail)
     fun loadRewarded(onAd: Listener, onFail: FailListener) = load("rewarded", onAd, onFail)
@@ -97,25 +91,17 @@ class AdView(context: Context) : FrameLayout(context) {
 
     /** 通用入口：adType = banner/interstitial/splash/rewarded/native/icon/push */
     fun load(adType: String, onAd: Listener, onFail: FailListener) {
-        val base = if (adxBase.isBlank()) "https://dellai.xyz" else adxBase.removeSuffix("/")
+        val base = if (adxBase.isBlank()) AdSdk.serverBase() else adxBase.removeSuffix("/")
+        val site = if (siteDomain.isBlank()) AdSdk.config.siteDomain else siteDomain
         val impId = "imp_${UUID.randomUUID()}"
         io.execute {
             try {
-                val body = JSONObject().apply {
-                    put("id", impId)
-                    put("site", JSONObject().put("domain", siteDomain))
-                    put("imp", JSONArray().put(JSONObject().apply {
-                        put("id", impId)
-                        put("bidfloor", 1.0)
-                        put("ext", JSONObject().put("ad_unit_id", adUnitId).put("ad_type", adType))
-                    }))
-                    put("device", deviceJson())
-                }
+                val body = AdSdk.buildBidRequest(impId, adUnitId, adType, site)
                 val res = JSONObject(postJson(base + "/ssp/bid", body.toString()))
-                val seat = res.optJSONArray("seatbid")?.optJSONObject(0) ?: throw Exception("NO_FILL")
-                val bid = seat.optJSONArray("bid")?.optJSONObject(0) ?: throw Exception("NO_FILL")
+                val seat = res.optJSONArray("seatbid")?.optJSONObject(0) ?: throw AdError.NO_FILL
+                val bid = seat.optJSONArray("bid")?.optJSONObject(0) ?: throw AdError.NO_FILL
                 val adm = bid.optString("adm", "")
-                if (adm.isBlank()) throw Exception("NO_FILL")
+                if (adm.isBlank()) throw AdError.NO_FILL
                 val ext = bid.optJSONObject("ext") ?: JSONObject()
                 val fmt = ext.optString("ad_format", adType)
                 val admType = ext.optString("adm_type", "html")
@@ -124,7 +110,7 @@ class AdView(context: Context) : FrameLayout(context) {
                 val advertiser = ext.optString("advertiser", "")
 
                 val (vastUrl, vastDuration, tracking) = if (fmt == "rewarded" && admType == "vast4") {
-                    val v = parseVast(adm) ?: throw Exception("BAD_VAST")
+                    val v = parseVast(adm) ?: throw AdError.BAD_VAST
                     Triple(v.mediaUrl, v.duration, v.tracking)
                 } else Triple("", "", emptyMap())
 
@@ -139,11 +125,27 @@ class AdView(context: Context) : FrameLayout(context) {
                     rwToken = rw.optString("token", ""),
                     advertiser = advertiser
                 )
+                AdCache.put(adUnitId, ad)   // 自动预缓存，供 loadFromCache 秒出
                 main.post { onAd.onAdLoaded(ad) }
+            } catch (e: AdError) {
+                main.post { onFail.onFailed(e) }
             } catch (e: Exception) {
-                main.post { onFail.onFailed(e.message ?: "UNKNOWN") }
+                main.post { onFail.onFailed(AdError.NETWORK) }
             }
         }
+    }
+
+    /** 预加载（仅填充 AdCache，不直接渲染）；展示时再用 loadFromCache 秒出 */
+    fun preload(adType: String, onReady: (Ad?) -> Unit = { _ -> }) {
+        load(adType,
+            AdView.Listener { onReady(it) },
+            AdView.FailListener { onReady(null) })
+    }
+
+    /** 命中预缓存直接展示；未命中回调 NO_FILL */
+    fun loadFromCache(adUnitId: String, onAd: Listener, onFail: FailListener) {
+        val ad = AdCache.get(adUnitId)
+        if (ad != null) onAd.onAdLoaded(ad) else onFail.onFailed(AdError.NO_FILL)
     }
 
     // ========== ② 渲染 ==========
@@ -176,7 +178,7 @@ class AdView(context: Context) : FrameLayout(context) {
 
     /** 播放激励视频（VideoView + VAST 4.0 tracking）；完播后把观看证据交给 App 服务端 S2S 裁决 */
     fun playRewarded(videoView: VideoView, ad: Ad, onReward: RewardListener) {
-        if (ad.vastUrl.isBlank()) { main.post { onReward.onRewardDenied("BAD_URL") }; return }
+        if (ad.vastUrl.isBlank()) { main.post { onReward.onRewardDenied(AdError.BAD_URL) }; return }
         val startMs = System.currentTimeMillis()
         val durationMs = parseDurationMs(ad.vastDuration)
         fireTracking(ad.tracking["impression"], ad)
@@ -191,7 +193,7 @@ class AdView(context: Context) : FrameLayout(context) {
             reportToAppServer(ad, watchedMs, durationMs.toInt(), onReward) // ★ 不本地发奖
         }
         videoView.setOnErrorListener { _, _, _ ->
-            main.post { onReward.onRewardDenied("VIDEO_ERROR") }; true
+            main.post { onReward.onRewardDenied(AdError.VIDEO_ERROR) }; true
         }
     }
 
@@ -224,42 +226,29 @@ class AdView(context: Context) : FrameLayout(context) {
 
     // ========== ④ 结算：上报观看证据给 App 服务端（真正的裁决在服务端） ==========
     private fun reportToAppServer(ad: Ad, watchedMs: Int, durationMs: Int, onReward: RewardListener) {
-        if (appServerRewardUrl.isBlank()) { main.post { onReward.onRewardDenied("NO_APP_SERVER_URL") }; return }
+        val url = if (appServerRewardUrl.isBlank()) AdSdk.config.appServerRewardUrl else appServerRewardUrl
+        if (url.isBlank()) { main.post { onReward.onRewardDenied(AdError.NO_REWARD_URL) }; return }
         io.execute {
             try {
                 val body = JSONObject().apply {
                     put("impid", ad.impId); put("cid", ad.cid); put("crid", ad.crid)
+                    put("token", ad.rwToken)
                     put("watchedMs", watchedMs); put("durationMs", durationMs)
                 }
-                val r = JSONObject(postJson(appServerRewardUrl, body.toString()))
+                val r = JSONObject(postJson(url, body.toString()))
                 val ok = r.optBoolean("ok", false)
                 val reward = r.optString("reward", "")
                 val reason = r.optString("reason", "SERVER_DENIED")
-                main.post { if (ok) onReward.onRewardGranted(reward) else onReward.onRewardDenied(reason) }
+                main.post {
+                    if (ok) onReward.onRewardGranted(reward) else onReward.onRewardDenied(AdError.SERVER_DENIED)
+                }
             } catch (e: Exception) {
-                main.post { onReward.onRewardDenied("NETWORK") }
+                main.post { onReward.onRewardDenied(AdError.NETWORK) }
             }
         }
     }
 
     // ========== ⑤ 工具方法 ==========
-    private fun deviceJson(): JSONObject = JSONObject().apply {
-        put("ua", System.getProperty("http.agent") ?: "")
-        put("os", "Android"); put("osv", Build.VERSION.RELEASE)
-        put("w", screenW()); put("h", screenH())
-        put("make", Build.MANUFACTURER); put("model", Build.MODEL)
-        put("geo", JSONObject().put("country", "CN"))
-    }
-    private fun screenW(): Int {
-        val dm = DisplayMetrics()
-        (context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager)
-            .defaultDisplay.getMetrics(dm); return dm.widthPixels
-    }
-    private fun screenH(): Int {
-        val dm = DisplayMetrics()
-        (context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager)
-            .defaultDisplay.getMetrics(dm); return dm.heightPixels
-    }
     private fun parseDurationMs(d: String): Long {
         val parts = d.split(":").map { it.toLongOrNull() ?: 0L }
         return if (parts.size == 3) (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000L else 0L

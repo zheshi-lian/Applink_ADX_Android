@@ -5,6 +5,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Xml
+import android.net.Uri
+import org.xmlpull.v1.XmlPullParser
 import android.util.DisplayMetrics
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -79,7 +81,7 @@ class AdView(context: Context) : FrameLayout(context) {
     // ---------- 回调 ----------
     fun interface Listener { fun onAdLoaded(ad: Ad) }
     fun interface FailListener { fun onFailed(reason: String) }
-    fun interface RewardListener { fun onRewardGranted(reward: String); fun onRewardDenied(reason: String) }
+    interface RewardListener { fun onRewardGranted(reward: String); fun onRewardDenied(reason: String) }
 
     // ---------- 内部 ----------
     private val io = Executors.newSingleThreadExecutor()
@@ -178,7 +180,7 @@ class AdView(context: Context) : FrameLayout(context) {
         val startMs = System.currentTimeMillis()
         val durationMs = parseDurationMs(ad.vastDuration)
         fireTracking(ad.tracking["impression"], ad)
-        videoView.setVideoURI(URL(ad.vastUrl))
+        videoView.setVideoURI(Uri.parse(ad.vastUrl))
         videoView.setOnPreparedListener {
             fireTracking(ad.tracking["start"], ad)
             videoView.start()

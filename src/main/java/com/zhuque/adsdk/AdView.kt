@@ -98,10 +98,10 @@ class AdView(context: Context) : FrameLayout(context) {
             try {
                 val body = AdSdk.buildBidRequest(impId, adUnitId, adType, site)
                 val res = JSONObject(postJson(base + "/ssp/bid", body.toString()))
-                val seat = res.optJSONArray("seatbid")?.optJSONObject(0) ?: throw AdError.NO_FILL
-                val bid = seat.optJSONArray("bid")?.optJSONObject(0) ?: throw AdError.NO_FILL
+                val seat = res.optJSONArray("seatbid")?.optJSONObject(0) ?: throw AdException(AdError.NO_FILL)
+                val bid = seat.optJSONArray("bid")?.optJSONObject(0) ?: throw AdException(AdError.NO_FILL)
                 val adm = bid.optString("adm", "")
-                if (adm.isBlank()) throw AdError.NO_FILL
+                if (adm.isBlank()) throw AdException(AdError.NO_FILL)
                 val ext = bid.optJSONObject("ext") ?: JSONObject()
                 val fmt = ext.optString("ad_format", adType)
                 val admType = ext.optString("adm_type", "html")
@@ -110,7 +110,7 @@ class AdView(context: Context) : FrameLayout(context) {
                 val advertiser = ext.optString("advertiser", "")
 
                 val (vastUrl, vastDuration, tracking) = if (fmt == "rewarded" && admType == "vast4") {
-                    val v = parseVast(adm) ?: throw AdError.BAD_VAST
+                    val v = parseVast(adm) ?: throw AdException(AdError.BAD_VAST)
                     Triple(v.mediaUrl, v.duration, v.tracking)
                 } else Triple("", "", emptyMap())
 
@@ -127,8 +127,8 @@ class AdView(context: Context) : FrameLayout(context) {
                 )
                 AdCache.put(adUnitId, ad)   // 自动预缓存，供 loadFromCache 秒出
                 main.post { onAd.onAdLoaded(ad) }
-            } catch (e: AdError) {
-                main.post { onFail.onFailed(e) }
+            } catch (e: AdException) {
+                main.post { onFail.onFailed(e.error) }
             } catch (e: Exception) {
                 main.post { onFail.onFailed(AdError.NETWORK) }
             }

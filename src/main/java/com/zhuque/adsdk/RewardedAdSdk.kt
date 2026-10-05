@@ -106,8 +106,8 @@ object RewardedAdSdk {
                 )
                 AdCache.put(adUnitId, ad.toViewAd())   // 预缓存
                 main.post { cb.onLoaded(ad) }
-            } catch (e: AdError) {
-                main.post { cb.onFailed(e) }
+            } catch (e: AdException) {
+                main.post { cb.onFailed(e.error) }
             } catch (e: Exception) {
                 main.post { cb.onFailed(AdError.NETWORK) }
             }

@@ -33,9 +33,10 @@ jobs:
           curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmd.zip
           unzip -q cmd.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
           mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          yes | sdkmanager --licenses
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          SM="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          ls -l "$SM"
+          yes | "$SM" --licenses
+          "$SM" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Build release AAR (library)
         uses: gradle/gradle-build-action@v3

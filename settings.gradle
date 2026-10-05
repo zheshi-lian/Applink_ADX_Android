@@ -5,6 +5,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = 'applink-adsdk'
-include ':adsdk'
-project(':adsdk').projectDir = file('.')
 include ':app'

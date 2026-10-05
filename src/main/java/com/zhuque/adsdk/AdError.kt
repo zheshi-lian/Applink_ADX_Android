@@ -21,3 +21,6 @@ enum class AdError(val code: Int, val reason: String) {
 
     override fun toString(): String = "AdError($code, $reason)"
 }
+
+/** 可抛出的 SDK 异常（携带 AdError），用于在 load 内部中断并回传标准化错误码 */
+class AdException(val error: AdError) : Exception(error.reason)

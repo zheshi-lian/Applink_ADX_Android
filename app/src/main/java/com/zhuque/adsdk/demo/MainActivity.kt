@@ -46,7 +46,8 @@ class MainActivity : Activity() {
         // ② 激励视频：VAST → 完播后 App 服务端 S2S 回调 ADX 裁决（SDK 不本地发奖）
         btnReward.setOnClickListener {
             RewardedAdSdk.load(
-                keywords = "休闲游戏,激励视频",
+                RewardedAdSdk.Config(),
+                "休闲游戏,激励视频",
                 object : RewardedAdSdk.LoadCallback {
                     override fun onLoaded(ad: RewardedAdSdk.Ad) {
                         Toast.makeText(this@MainActivity, "rewarded loaded", Toast.LENGTH_SHORT).show()

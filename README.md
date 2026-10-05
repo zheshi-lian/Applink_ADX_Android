@@ -7,7 +7,7 @@
 
 ## 集成（二选一）
 
-### 方式 A：直接用 AAR（推荐，对标 AppLuck SDK 的分发方式）
+### 方式 A：直接用 AAR（推荐）
 
 1. 获取 `applink-adsdk-release.aar`：
    - **Release 下载**：本仓库 Releases 页（打 `v*` tag 由 CI 自动附上 AAR）；或

@@ -1,0 +1,7 @@
+2026-10-06 12:52:15,948 WARNING 计划 camp_rwd_game 缺少 video 素材，已置为暂停：设置环境变量 ADX_VIDEO_URL，或把 mp4 放到 D:\训练数据\AI广告\openrtb-bidder\sdk\android\server\creatives，或在 D:\训练数据\AI广告\openrtb-bidder\sdk\android\server\campaigns.json 里写死 media_url
+2026-10-06 12:52:15,951 WARNING 计划 camp_rwd_ecom 缺少 video 素材，已置为暂停：设置环境变量 ADX_VIDEO_URL，或把 mp4 放到 D:\训练数据\AI广告\openrtb-bidder\sdk\android\server\creatives，或在 D:\训练数据\AI广告\openrtb-bidder\sdk\android\server\campaigns.json 里写死 media_url
+2026-10-06 12:52:15,955 WARNING 计划 camp_int_tool 缺少 video 素材，已置为暂停：设置环境变量 ADX_VIDEO_URL，或把 mp4 放到 D:\训练数据\AI广告\openrtb-bidder\sdk\android\server\creatives，或在 D:\训练数据\AI广告\openrtb-bidder\sdk\android\server\campaigns.json 里写死 media_url
+2026-10-06 12:52:15,961 WARNING 共 3 条计划因缺素材未启用
+2026-10-06 12:52:15,962 INFO SSP 监听 :8099 | DB=D:\训练数据\AI广告\openrtb-bidder\sdk\android\server\adx_ssp.db | auction=second_price | 启用计划=1 | API_KEY=默认(demo_api_key，生产请改 ADX_API_KEY)
+2026-10-06 12:52:16,806 INFO BID_BLOCK app_key= ip=127.0.0.1 reason=APP_KEY_UNKNOWN detail=unknown app_key rules=[]
+2026-10-06 12:52:17,514 INFO BID_BLOCK app_key= ip=127.0.0.1 reason=APP_KEY_UNKNOWN detail=unknown app_key rules=[]
